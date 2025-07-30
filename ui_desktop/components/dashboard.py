@@ -1,4 +1,7 @@
+# ===================================================================
 # FILE: ui_desktop/components/dashboard.py
+# (This file does not need changes)
+# ===================================================================
 import tkinter as tk
 from tkinter import ttk
 
@@ -10,7 +13,6 @@ class Dashboard(ttk.Frame):
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, *args, **kwargs)
         self.configure(style="TFrame")
-
         self._create_widgets()
 
     def _create_widgets(self):
@@ -76,4 +78,3 @@ class Dashboard(ttk.Frame):
         
         pmu_color = "#FFD700" if data['pmu_anomaly'] else "white"
         self.pmu_status_label.config(text=f"Status: {'ANOMALY' if data['pmu_anomaly'] else 'Normal'}", foreground=pmu_color)
-

@@ -1,5 +1,4 @@
-# ===================================================================
-# FILE: ui_desktop/main_ui.py 
+# FILE: ui_desktop/main_ui.py (Updated with Aspect Ratio Fix)
 # ===================================================================
 import tkinter as tk
 from tkinter import ttk, scrolledtext
@@ -9,18 +8,32 @@ import time
 import os
 import sys
 
+# --- CHANGE 1: Import the Pillow library ---
+from PIL import ImageTk, Image
+
 try:
+    # Core backend imports
     from aegis_core.data_simulator import DataSimulator
     from aegis_core.analyzers import ScadaAnalyzer, PmuAnalyzer
     from aegis_core.fusion_center import FusionCenter
+    # UI component import
+    from ui_desktop.components.dashboard import Dashboard 
     from collections import deque
     import pandas as pd
 except ImportError as e:
     print(f"--- ImportError --- \nError: {e}")
+    print("\nTroubleshooting:")
+    print("1. Make sure you are running this script from the project's ROOT directory (the 'aegisgrid' folder).")
+    print("   Correct command: python -m ui_desktop.main_ui")
+    print("2. Ensure the folder structure is correct (ui_desktop/components/__init__.py must exist).")
     sys.exit(1)
 
-# Define file paths for saved models
-MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'saved_models'))
+# Define file paths
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+MODEL_DIR = os.path.join(ROOT_DIR, 'saved_models')
+ASSETS_DIR = os.path.join(ROOT_DIR, 'ui_desktop', 'assets')
+LOGO_PATH = os.path.join(ASSETS_DIR, 'logo.png')
+
 SCADA_MODEL_PATH = os.path.join(MODEL_DIR, 'scada_model.joblib')
 SCADA_SCALER_PATH = os.path.join(MODEL_DIR, 'scada_scaler.joblib')
 PMU_MODEL_PATH = os.path.join(MODEL_DIR, 'pmu_model.h5')
@@ -30,12 +43,20 @@ PMU_THRESHOLD_PATH = os.path.join(MODEL_DIR, 'pmu_threshold.joblib')
 class AegisApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AegisGRID Predictive Security Platform v1.0")
+        self.title("AegisGRID Predictive Security Platform v1.6")
         self.geometry("800x600")
         self.configure(bg="#2E2E2E")
+
         self.simulation_thread = None
         self.stop_event = threading.Event()
         self.update_queue = queue.Queue()
+
+        self._configure_styles()
+        self._create_widgets()
+        self.after(100, self.process_queue)
+        os.makedirs(MODEL_DIR, exist_ok=True)
+
+    def _configure_styles(self):
         self.style = ttk.Style(self)
         self.style.theme_use('clam')
         self.style.configure("TFrame", background="#2E2E2E")
@@ -44,44 +65,47 @@ class AegisApp(tk.Tk):
         self.style.configure("Status.TLabel", font=("Segoe UI", 24, "bold"))
         self.style.configure("TButton", font=("Segoe UI", 10), padding=6)
         self.style.map("TButton", background=[('active', '#4A4A4A')], foreground=[('active', 'white')])
-        self._create_widgets()
-        self.after(100, self.process_queue)
-        # Ensure model directory exists
-        os.makedirs(MODEL_DIR, exist_ok=True)
 
     def _create_widgets(self):
         main_frame = ttk.Frame(self, padding="20")
         main_frame.pack(expand=True, fill="both")
-        header_label = ttk.Label(main_frame, text="AegisGRID Real-Time Monitoring", style="Header.TLabel")
-        header_label.pack(pady=(0, 20))
-        status_frame = ttk.Frame(main_frame, style="TFrame")
-        status_frame.pack(fill="x", pady=10)
-        self.status_label = ttk.Label(status_frame, text="STANDBY", style="Status.TLabel", foreground="#FFA500")
-        self.status_label.pack()
-        self.reason_label = ttk.Label(status_frame, text="Simulation not started.", style="TLabel")
-        self.reason_label.pack(pady=5)
-        confidence_frame = ttk.Frame(main_frame)
-        confidence_frame.pack(pady=10)
-        ttk.Label(confidence_frame, text="Threat Confidence:", style="TLabel").pack(side="left", padx=5)
-        self.confidence_progress = ttk.Progressbar(confidence_frame, orient="horizontal", length=300, mode="determinate")
-        self.confidence_progress.pack(side="left")
-        self.confidence_label = ttk.Label(confidence_frame, text="0%", style="TLabel", width=5)
-        self.confidence_label.pack(side="left", padx=5)
-        analyzer_frame = ttk.Frame(main_frame)
-        analyzer_frame.pack(pady=20, fill="x", expand=True)
-        analyzer_frame.columnconfigure((0, 1), weight=1)
-        scada_frame = ttk.Labelframe(analyzer_frame, text="SCADA Analyzer", padding=10)
-        scada_frame.grid(row=0, column=0, sticky="ew", padx=10)
-        self.scada_status_label = ttk.Label(scada_frame, text="Status: N/A", font=("Segoe UI", 12))
-        self.scada_status_label.pack()
-        pmu_frame = ttk.Labelframe(analyzer_frame, text="PMU Analyzer", padding=10)
-        pmu_frame.grid(row=0, column=1, sticky="ew", padx=10)
-        self.pmu_status_label = ttk.Label(pmu_frame, text="Status: N/A", font=("Segoe UI", 12))
-        self.pmu_status_label.pack()
+
+        # --- Header with Logo ---
+        header_frame = ttk.Frame(main_frame, style="TFrame")
+        header_frame.pack(fill="x", pady=(0, 10))
+        
+        try:
+            # Open the image file with Pillow
+            img = Image.open(LOGO_PATH)
+            
+            # --- THE FIX IS HERE: Resize while maintaining aspect ratio ---
+            max_height = 50
+            original_width, original_height = img.size
+            aspect_ratio = original_width / original_height
+            new_width = int(max_height * aspect_ratio)
+            
+            img = img.resize((new_width, max_height), Image.Resampling.LANCZOS)
+            
+            self.logo_image = ImageTk.PhotoImage(img)
+            logo_label = ttk.Label(header_frame, image=self.logo_image, style="TLabel")
+            logo_label.pack(side="left")
+        except Exception as e:
+            # Fallback to text logo if image fails to load for any reason
+            print(f"Could not load logo image: {e}")
+            logo_label = ttk.Label(header_frame, text="🛡️ AegisGRID", font=("Segoe UI Symbol", 24, "bold"), foreground="#00BFFF")
+            logo_label.pack(side="left")
+
+        # --- Dashboard Component ---
+        self.dashboard = Dashboard(main_frame)
+        self.dashboard.pack(fill="x", pady=10)
+
+        # --- Event Log ---
         log_frame = ttk.Labelframe(main_frame, text="Event Log", padding=10)
         log_frame.pack(pady=10, fill="both", expand=True)
         self.log_text = scrolledtext.ScrolledText(log_frame, state="disabled", height=10, bg="#1C1C1C", fg="white", font=("Consolas", 9))
         self.log_text.pack(fill="both", expand=True)
+
+        # --- Control Buttons ---
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(pady=10)
         self.start_button = ttk.Button(button_frame, text="Start Simulation", command=self.start_simulation)
@@ -123,20 +147,9 @@ class AegisApp(tk.Tk):
             self.after(200, self.process_queue)
 
     def _update_ui(self, data):
-        if data['aegis_alert']:
-            self.status_label.config(text="AEGIS ALERT", foreground="#FF4B4B")
-            if data.get('is_new_alert', False): # Log only new alerts
-                self._log_message(f"ALERT: {data['reason']}", "CRITICAL")
-        else:
-            self.status_label.config(text="SYSTEM NOMINAL", foreground="#76FF03")
-        self.reason_label.config(text=data['reason'])
-        confidence_percent = data['combined_confidence'] * 100
-        self.confidence_progress['value'] = confidence_percent
-        self.confidence_label.config(text=f"{confidence_percent:.0f}%")
-        scada_color = "#FFD700" if data['scada_anomaly'] else "white"
-        self.scada_status_label.config(text=f"Status: {'ANOMALY' if data['scada_anomaly'] else 'Normal'}", foreground=scada_color)
-        pmu_color = "#FFD700" if data['pmu_anomaly'] else "white"
-        self.pmu_status_label.config(text=f"Status: {'ANOMALY' if data['pmu_anomaly'] else 'Normal'}", foreground=pmu_color)
+        self.dashboard.update_display(data)
+        if data.get('is_new_alert', False):
+            self._log_message(f"ALERT: {data['reason']}", "CRITICAL")
 
     def on_closing(self):
         self.stop_simulation()
@@ -145,34 +158,34 @@ class AegisApp(tk.Tk):
     @staticmethod
     def run_backend_simulation(update_queue, stop_event):
         try:
+            from tensorflow.keras.losses import MeanSquaredError
+            from tensorflow.keras.models import load_model
+            import joblib
+
             update_queue.put("Initializing backend modules...")
             scada_analyzer = ScadaAnalyzer()
             pmu_analyzer = PmuAnalyzer(timesteps=10)
             fusion_center = FusionCenter()
 
-            # --- LOAD OR TRAIN SCADA MODEL ---
             if os.path.exists(SCADA_MODEL_PATH) and os.path.exists(SCADA_SCALER_PATH):
                 update_queue.put("Loading pre-trained SCADA model...")
                 scada_analyzer.load_model(SCADA_MODEL_PATH, SCADA_SCALER_PATH)
             else:
                 update_queue.put("No pre-trained SCADA model found. Training new model...")
                 simulator = DataSimulator()
-                num_training_points = 2000
-                training_data = [simulator.get_data_point() for _ in range(num_training_points)]
+                training_data = [simulator.get_data_point() for _ in range(2000)]
                 scada_training_data = pd.DataFrame([d['scada'] for d in training_data])
                 scada_analyzer.train(scada_training_data)
                 update_queue.put("Saving new SCADA model...")
                 scada_analyzer.save_model(SCADA_MODEL_PATH, SCADA_SCALER_PATH)
 
-            # --- LOAD OR TRAIN PMU MODEL ---
             if all(os.path.exists(p) for p in [PMU_MODEL_PATH, PMU_SCALER_PATH, PMU_THRESHOLD_PATH]):
                 update_queue.put("Loading pre-trained PMU model...")
                 pmu_analyzer.load_model(PMU_MODEL_PATH, PMU_SCALER_PATH, PMU_THRESHOLD_PATH)
             else:
                 update_queue.put("No pre-trained PMU model found. Training new model...")
                 simulator = DataSimulator()
-                num_training_points = 2000
-                training_data = [simulator.get_data_point() for _ in range(num_training_points)]
+                training_data = [simulator.get_data_point() for _ in range(2000)]
                 pmu_training_data = pd.DataFrame([d['pmu'] for d in training_data])
                 pmu_analyzer.train(pmu_training_data)
                 update_queue.put("Saving new PMU model...")
@@ -195,7 +208,8 @@ class AegisApp(tk.Tk):
                 update_queue.put(final_alert)
                 time.sleep(1)
         except Exception as e:
-            update_queue.put(f"Backend Error: {e}")
+            import traceback
+            update_queue.put(f"Backend Error: {e}\n{traceback.format_exc()}")
         finally:
             update_queue.put("Simulation thread has stopped.")
 
