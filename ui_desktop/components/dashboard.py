@@ -1,7 +1,3 @@
-# ===================================================================
-# FILE: ui_desktop/components/dashboard.py
-# (This file does not need changes)
-# ===================================================================
 import tkinter as tk
 from tkinter import ttk
 
@@ -26,6 +22,10 @@ class Dashboard(ttk.Frame):
         
         self.reason_label = ttk.Label(status_frame, text="Simulation not started.", style="TLabel")
         self.reason_label.pack(pady=5)
+
+        # --- NEW: Location Display ---
+        self.location_label = ttk.Label(status_frame, text="Monitoring All Sectors", font=("Segoe UI", 10, "italic"), foreground="cyan")
+        self.location_label.pack(pady=(5,0))
 
         # --- Confidence Score ---
         confidence_frame = ttk.Frame(self)
@@ -53,26 +53,23 @@ class Dashboard(ttk.Frame):
         self.pmu_status_label.pack()
 
     def update_display(self, data: dict):
-        """
-        Updates all dashboard widgets with new data from the backend.
-
-        Args:
-            data (dict): A dictionary containing the latest fused alert status.
-        """
+        """Updates all dashboard widgets with new data from the backend."""
         # Update Main Status
         if data['aegis_alert']:
             self.status_label.config(text="AEGIS ALERT", foreground="#FF4B4B")
+            # --- NEW: Update location text on alert ---
+            self.location_label.config(text=f"Location of Interest: {data['location']}")
         else:
             self.status_label.config(text="SYSTEM NOMINAL", foreground="#76FF03")
+            # --- NEW: Reset location text when nominal ---
+            self.location_label.config(text="Monitoring All Sectors")
         
         self.reason_label.config(text=data['reason'])
         
-        # Update Confidence Progress Bar
         confidence_percent = data['combined_confidence'] * 100
         self.confidence_progress['value'] = confidence_percent
         self.confidence_label.config(text=f"{confidence_percent:.0f}%")
         
-        # Update Individual Analyzers
         scada_color = "#FFD700" if data['scada_anomaly'] else "white"
         self.scada_status_label.config(text=f"Status: {'ANOMALY' if data['scada_anomaly'] else 'Normal'}", foreground=scada_color)
         

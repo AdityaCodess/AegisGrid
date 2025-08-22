@@ -1,5 +1,3 @@
-# FILE: ui_desktop/main_ui.py (Updated with Aspect Ratio Fix)
-# ===================================================================
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 import threading
@@ -7,25 +5,17 @@ import queue
 import time
 import os
 import sys
-
-# --- CHANGE 1: Import the Pillow library ---
 from PIL import ImageTk, Image
 
 try:
-    # Core backend imports
     from aegis_core.data_simulator import DataSimulator
     from aegis_core.analyzers import ScadaAnalyzer, PmuAnalyzer
     from aegis_core.fusion_center import FusionCenter
-    # UI component import
     from ui_desktop.components.dashboard import Dashboard 
     from collections import deque
     import pandas as pd
 except ImportError as e:
     print(f"--- ImportError --- \nError: {e}")
-    print("\nTroubleshooting:")
-    print("1. Make sure you are running this script from the project's ROOT directory (the 'aegisgrid' folder).")
-    print("   Correct command: python -m ui_desktop.main_ui")
-    print("2. Ensure the folder structure is correct (ui_desktop/components/__init__.py must exist).")
     sys.exit(1)
 
 # Define file paths
@@ -43,75 +33,98 @@ PMU_THRESHOLD_PATH = os.path.join(MODEL_DIR, 'pmu_threshold.joblib')
 class AegisApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AegisGRID Predictive Security Platform v1.6")
-        self.geometry("800x600")
+        self.title("AegisGRID Predictive Security Platform v2.1")
+        self.geometry("800x650") 
         self.configure(bg="#2E2E2E")
-
         self.simulation_thread = None
         self.stop_event = threading.Event()
         self.update_queue = queue.Queue()
+        self.high_anomaly_var = tk.BooleanVar()
 
         self._configure_styles()
         self._create_widgets()
+        
         self.after(100, self.process_queue)
+        self._update_time()
+        
         os.makedirs(MODEL_DIR, exist_ok=True)
 
     def _configure_styles(self):
         self.style = ttk.Style(self)
         self.style.theme_use('clam')
+        # General styles
         self.style.configure("TFrame", background="#2E2E2E")
         self.style.configure("TLabel", background="#2E2E2E", foreground="white", font=("Segoe UI", 10))
-        self.style.configure("Header.TLabel", font=("Segoe UI", 18, "bold"))
+        self.style.configure("TLabelframe", background="#3C3C3C", bordercolor="#555555")
+        self.style.configure("TLabelframe.Label", background="#3C3C3C", foreground="white", font=("Segoe UI", 10, "bold"))
+        # Header styles
+        self.style.configure("Title.TLabel", font=("Segoe UI", 12, "bold"), foreground="#CCCCCC")
+        self.style.configure("Time.TLabel", font=("Segoe UI", 10), foreground="#CCCCCC")
+        # Dashboard styles
         self.style.configure("Status.TLabel", font=("Segoe UI", 24, "bold"))
-        self.style.configure("TButton", font=("Segoe UI", 10), padding=6)
-        self.style.map("TButton", background=[('active', '#4A4A4A')], foreground=[('active', 'white')])
+        # Progress bar style
+        self.style.configure("TProgressbar", troughcolor='#1C1C1C', background='#00BFFF', bordercolor="#1C1C1C")
+        # Button styles
+        self.style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=6, borderwidth=0)
+        self.style.map("TButton",
+            background=[('!disabled', '#4A4A4A'), ('active', '#5A5A5A'), ('disabled', '#3A3A3A')],
+            foreground=[('!disabled', 'white'), ('disabled', '#777777')]
+        )
+        # Checkbox style
+        self.style.configure("TCheckbutton", background="#3C3C3C", foreground="white", font=("Segoe UI", 10))
+        self.style.map("TCheckbutton",
+            indicatorcolor=[('selected', '#00BFFF'), ('!selected', 'white')],
+            background=[('active', '#3C3C3C')]
+        )
 
     def _create_widgets(self):
         main_frame = ttk.Frame(self, padding="20")
         main_frame.pack(expand=True, fill="both")
 
-        # --- Header with Logo ---
+        top_header_frame = ttk.Frame(main_frame, style="TFrame")
+        top_header_frame.pack(fill="x", pady=(0, 5))
+        title_label = ttk.Label(top_header_frame, text="AEGISGRID PLATFORM", style="Title.TLabel")
+        title_label.pack(side="left")
+        self.time_label = ttk.Label(top_header_frame, text="", style="Time.TLabel")
+        self.time_label.pack(side="right")
+
         header_frame = ttk.Frame(main_frame, style="TFrame")
         header_frame.pack(fill="x", pady=(0, 10))
-        
         try:
-            # Open the image file with Pillow
             img = Image.open(LOGO_PATH)
-            
-            # --- THE FIX IS HERE: Resize while maintaining aspect ratio ---
             max_height = 50
-            original_width, original_height = img.size
-            aspect_ratio = original_width / original_height
+            aspect_ratio = img.width / img.height
             new_width = int(max_height * aspect_ratio)
-            
             img = img.resize((new_width, max_height), Image.Resampling.LANCZOS)
-            
             self.logo_image = ImageTk.PhotoImage(img)
             logo_label = ttk.Label(header_frame, image=self.logo_image, style="TLabel")
             logo_label.pack(side="left")
         except Exception as e:
-            # Fallback to text logo if image fails to load for any reason
             print(f"Could not load logo image: {e}")
             logo_label = ttk.Label(header_frame, text="🛡️ AegisGRID", font=("Segoe UI Symbol", 24, "bold"), foreground="#00BFFF")
             logo_label.pack(side="left")
-
-        # --- Dashboard Component ---
+        
         self.dashboard = Dashboard(main_frame)
         self.dashboard.pack(fill="x", pady=10)
+        
+        control_frame = ttk.Labelframe(main_frame, text="Controls", padding=10)
+        control_frame.pack(pady=10, fill="x")
+        self.start_button = ttk.Button(control_frame, text="Start Simulation", command=self.start_simulation)
+        self.start_button.pack(side="left", padx=(10,5))
+        self.stop_button = ttk.Button(control_frame, text="Stop Simulation", command=self.stop_simulation, state="disabled")
+        self.stop_button.pack(side="left", padx=5)
+        self.anomaly_check = ttk.Checkbutton(control_frame, text="High Anomaly Mode", variable=self.high_anomaly_var, style="TCheckbutton")
+        self.anomaly_check.pack(side="right", padx=10)
 
-        # --- Event Log ---
         log_frame = ttk.Labelframe(main_frame, text="Event Log", padding=10)
         log_frame.pack(pady=10, fill="both", expand=True)
         self.log_text = scrolledtext.ScrolledText(log_frame, state="disabled", height=10, bg="#1C1C1C", fg="white", font=("Consolas", 9))
         self.log_text.pack(fill="both", expand=True)
 
-        # --- Control Buttons ---
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=10)
-        self.start_button = ttk.Button(button_frame, text="Start Simulation", command=self.start_simulation)
-        self.start_button.pack(side="left", padx=10)
-        self.stop_button = ttk.Button(button_frame, text="Stop Simulation", command=self.stop_simulation, state="disabled")
-        self.stop_button.pack(side="left", padx=10)
+    def _update_time(self):
+        current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.time_label.config(text=current_time)
+        self.after(1000, self._update_time)
 
     def _log_message(self, message, level="INFO"):
         self.log_text.configure(state="normal")
@@ -124,8 +137,11 @@ class AegisApp(tk.Tk):
         self.stop_event.clear()
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
-        self._log_message("Starting simulation thread...")
-        self.simulation_thread = threading.Thread(target=self.run_backend_simulation, args=(self.update_queue, self.stop_event), daemon=True)
+        self.anomaly_check.configure(state="disabled")
+        high_anomaly_mode = self.high_anomaly_var.get()
+        log_mode = "High Anomaly" if high_anomaly_mode else "Normal"
+        self._log_message(f"Starting simulation thread in {log_mode} mode...")
+        self.simulation_thread = threading.Thread(target=self.run_backend_simulation, args=(self.update_queue, self.stop_event, high_anomaly_mode), daemon=True)
         self.simulation_thread.start()
 
     def stop_simulation(self):
@@ -134,6 +150,7 @@ class AegisApp(tk.Tk):
             self._log_message("Stop signal sent to simulation thread.", "WARN")
             self.start_button.configure(state="normal")
             self.stop_button.configure(state="disabled")
+            self.anomaly_check.configure(state="normal")
             
     def process_queue(self):
         try:
@@ -144,19 +161,19 @@ class AegisApp(tk.Tk):
                 elif isinstance(message, dict):
                     self._update_ui(message)
         finally:
-            self.after(200, self.process_queue)
+            self.after(100, self.process_queue)
 
     def _update_ui(self, data):
         self.dashboard.update_display(data)
         if data.get('is_new_alert', False):
-            self._log_message(f"ALERT: {data['reason']}", "CRITICAL")
+            self._log_message(f"ALERT @ {data['location']}: {data['reason']}", "CRITICAL")
 
     def on_closing(self):
         self.stop_simulation()
         self.destroy()
 
     @staticmethod
-    def run_backend_simulation(update_queue, stop_event):
+    def run_backend_simulation(update_queue, stop_event, high_anomaly_mode):
         try:
             from tensorflow.keras.losses import MeanSquaredError
             from tensorflow.keras.models import load_model
@@ -166,14 +183,14 @@ class AegisApp(tk.Tk):
             scada_analyzer = ScadaAnalyzer()
             pmu_analyzer = PmuAnalyzer(timesteps=10)
             fusion_center = FusionCenter()
+            training_simulator = DataSimulator(high_anomaly_mode=False)
 
             if os.path.exists(SCADA_MODEL_PATH) and os.path.exists(SCADA_SCALER_PATH):
                 update_queue.put("Loading pre-trained SCADA model...")
                 scada_analyzer.load_model(SCADA_MODEL_PATH, SCADA_SCALER_PATH)
             else:
                 update_queue.put("No pre-trained SCADA model found. Training new model...")
-                simulator = DataSimulator()
-                training_data = [simulator.get_data_point() for _ in range(2000)]
+                training_data = [training_simulator.get_data_point() for _ in range(2000)]
                 scada_training_data = pd.DataFrame([d['scada'] for d in training_data])
                 scada_analyzer.train(scada_training_data)
                 update_queue.put("Saving new SCADA model...")
@@ -184,15 +201,14 @@ class AegisApp(tk.Tk):
                 pmu_analyzer.load_model(PMU_MODEL_PATH, PMU_SCALER_PATH, PMU_THRESHOLD_PATH)
             else:
                 update_queue.put("No pre-trained PMU model found. Training new model...")
-                simulator = DataSimulator()
-                training_data = [simulator.get_data_point() for _ in range(2000)]
+                training_data = [training_simulator.get_data_point() for _ in range(2000)]
                 pmu_training_data = pd.DataFrame([d['pmu'] for d in training_data])
                 pmu_analyzer.train(pmu_training_data)
                 update_queue.put("Saving new PMU model...")
                 pmu_analyzer.save_model(PMU_MODEL_PATH, PMU_SCALER_PATH, PMU_THRESHOLD_PATH)
             
             update_queue.put("Initialization complete. Starting real-time monitoring.")
-            live_simulator = DataSimulator()
+            live_simulator = DataSimulator(high_anomaly_mode=high_anomaly_mode)
             pmu_history = deque(maxlen=pmu_analyzer.timesteps)
             last_alert_status = False
             while not stop_event.is_set():
@@ -202,6 +218,7 @@ class AegisApp(tk.Tk):
                 pmu_result = pmu_analyzer.analyze(list(pmu_history))
                 final_alert = fusion_center.fuse(scada_result, pmu_result)
                 
+                final_alert['location'] = live_data['location']
                 final_alert['is_new_alert'] = final_alert['aegis_alert'] and not last_alert_status
                 last_alert_status = final_alert['aegis_alert']
                 
