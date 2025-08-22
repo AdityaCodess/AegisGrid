@@ -33,9 +33,14 @@ PMU_THRESHOLD_PATH = os.path.join(MODEL_DIR, 'pmu_threshold.joblib')
 class AegisApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AegisGRID Predictive Security Platform v2.1")
+        self.title("AegisGRID Predictive Security Platform v2.2")
         self.geometry("800x650") 
-        self.configure(bg="#2E2E2E")
+        
+        self.gradient = tk.Canvas(self, highlightthickness=0)
+        self.gradient.pack(fill="both", expand=True)
+        self.draw_gradient("#1a202c", "#2d3748")
+        self.bind("<Configure>", self.on_resize)
+
         self.simulation_thread = None
         self.stop_event = threading.Event()
         self.update_queue = queue.Queue()
@@ -49,37 +54,67 @@ class AegisApp(tk.Tk):
         
         os.makedirs(MODEL_DIR, exist_ok=True)
 
+    def draw_gradient(self, color1, color2):
+        """Draws a vertical gradient on the canvas."""
+        self.gradient.delete("gradient")
+        width = self.winfo_width()
+        height = self.winfo_height()
+        r1, g1, b1 = self.winfo_rgb(color1)
+        r2, g2, b2 = self.winfo_rgb(color2)
+        r_ratio = (r2 - r1) / height
+        g_ratio = (g2 - g1) / height
+        b_ratio = (b2 - b1) / height
+
+        for i in range(height):
+            nr = int(r1 + (r_ratio * i))
+            ng = int(g1 + (g_ratio * i))
+            nb = int(b1 + (b_ratio * i))
+            color = f'#{nr>>8:02x}{ng>>8:02x}{nb>>8:02x}'
+            self.gradient.create_line(0, i, width, i, tags=("gradient",), fill=color)
+
+    def on_resize(self, event):
+        """Redraws the gradient when the window is resized."""
+        self.draw_gradient("#1a202c", "#2d3748")
+
     def _configure_styles(self):
         self.style = ttk.Style(self)
         self.style.theme_use('clam')
-        # General styles
-        self.style.configure("TFrame", background="#2E2E2E")
-        self.style.configure("TLabel", background="#2E2E2E", foreground="white", font=("Segoe UI", 10))
-        self.style.configure("TLabelframe", background="#3C3C3C", bordercolor="#555555")
-        self.style.configure("TLabelframe.Label", background="#3C3C3C", foreground="white", font=("Segoe UI", 10, "bold"))
-        # Header styles
-        self.style.configure("Title.TLabel", font=("Segoe UI", 12, "bold"), foreground="#CCCCCC")
-        self.style.configure("Time.TLabel", font=("Segoe UI", 10), foreground="#CCCCCC")
-        # Dashboard styles
-        self.style.configure("Status.TLabel", font=("Segoe UI", 24, "bold"))
-        # Progress bar style
-        self.style.configure("TProgressbar", troughcolor='#1C1C1C', background='#00BFFF', bordercolor="#1C1C1C")
-        # Button styles
-        self.style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=6, borderwidth=0)
+        
+        # --- FIX 1: Define colors as instance attributes ---
+        self.BG_COLOR = "#1a202c"
+        self.FRAME_COLOR = "#2d3748"
+        self.BORDER_COLOR = "#4a5568"
+        self.TEXT_COLOR = "#e2e8f0"
+        self.ACCENT_COLOR = "#38b2ac"
+
+        self.style.configure(".", background=self.BG_COLOR, foreground=self.TEXT_COLOR)
+        self.style.configure("TFrame", background=self.BG_COLOR)
+        self.style.configure("App.TFrame", background=self.FRAME_COLOR)
+        self.style.configure("TLabel", background=self.FRAME_COLOR, foreground=self.TEXT_COLOR, font=("Segoe UI", 10))
+        self.style.configure("TLabelframe", background=self.FRAME_COLOR, bordercolor=self.BORDER_COLOR, relief="solid", borderwidth=1)
+        self.style.configure("TLabelframe.Label", background=self.FRAME_COLOR, foreground=self.ACCENT_COLOR, font=("Segoe UI", 11, "bold"))
+        
+        self.style.configure("Title.TLabel", background=self.BG_COLOR, font=("Segoe UI", 12, "bold"), foreground="#a0aec0")
+        self.style.configure("Time.TLabel", background=self.BG_COLOR, font=("Segoe UI", 10), foreground="#a0aec0")
+        self.style.configure("Status.TLabel", background=self.FRAME_COLOR, font=("Segoe UI", 24, "bold"))
+        
+        self.style.configure("TProgressbar", troughcolor=self.BG_COLOR, background=self.ACCENT_COLOR, bordercolor=self.BG_COLOR)
+        
+        self.style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=8, borderwidth=0, relief="flat")
         self.style.map("TButton",
-            background=[('!disabled', '#4A4A4A'), ('active', '#5A5A5A'), ('disabled', '#3A3A3A')],
-            foreground=[('!disabled', 'white'), ('disabled', '#777777')]
+            background=[('!disabled', self.ACCENT_COLOR), ('active', '#2c7a7b'), ('disabled', '#4a5568')],
+            foreground=[('!disabled', 'white'), ('disabled', '#a0aec0')]
         )
-        # Checkbox style
-        self.style.configure("TCheckbutton", background="#3C3C3C", foreground="white", font=("Segoe UI", 10))
+        
+        self.style.configure("TCheckbutton", background=self.FRAME_COLOR, foreground=self.TEXT_COLOR, font=("Segoe UI", 10))
         self.style.map("TCheckbutton",
-            indicatorcolor=[('selected', '#00BFFF'), ('!selected', 'white')],
-            background=[('active', '#3C3C3C')]
+            indicatorcolor=[('selected', self.ACCENT_COLOR), ('!selected', 'white')],
+            background=[('active', self.FRAME_COLOR)]
         )
 
     def _create_widgets(self):
-        main_frame = ttk.Frame(self, padding="20")
-        main_frame.pack(expand=True, fill="both")
+        main_frame = ttk.Frame(self.gradient, padding="20", style="TFrame")
+        main_frame.place(relx=0.5, rely=0.5, anchor="center", relwidth=1.0, relheight=1.0)
 
         top_header_frame = ttk.Frame(main_frame, style="TFrame")
         top_header_frame.pack(fill="x", pady=(0, 5))
@@ -97,11 +132,13 @@ class AegisApp(tk.Tk):
             new_width = int(max_height * aspect_ratio)
             img = img.resize((new_width, max_height), Image.Resampling.LANCZOS)
             self.logo_image = ImageTk.PhotoImage(img)
-            logo_label = ttk.Label(header_frame, image=self.logo_image, style="TLabel")
+            # --- FIX 2: Use self.BG_COLOR ---
+            logo_label = ttk.Label(header_frame, image=self.logo_image, style="TLabel", background=self.BG_COLOR)
             logo_label.pack(side="left")
         except Exception as e:
             print(f"Could not load logo image: {e}")
-            logo_label = ttk.Label(header_frame, text="🛡️ AegisGRID", font=("Segoe UI Symbol", 24, "bold"), foreground="#00BFFF")
+            # --- FIX 3: Use self.ACCENT_COLOR and self.BG_COLOR ---
+            logo_label = ttk.Label(header_frame, text="🛡️ AegisGRID", font=("Segoe UI Symbol", 24, "bold"), foreground=self.ACCENT_COLOR, background=self.BG_COLOR)
             logo_label.pack(side="left")
         
         self.dashboard = Dashboard(main_frame)
@@ -118,7 +155,7 @@ class AegisApp(tk.Tk):
 
         log_frame = ttk.Labelframe(main_frame, text="Event Log", padding=10)
         log_frame.pack(pady=10, fill="both", expand=True)
-        self.log_text = scrolledtext.ScrolledText(log_frame, state="disabled", height=10, bg="#1C1C1C", fg="white", font=("Consolas", 9))
+        self.log_text = scrolledtext.ScrolledText(log_frame, state="disabled", height=10, bg="#0d1117", fg="#c9d1d9", font=("Consolas", 9), relief="flat", borderwidth=0)
         self.log_text.pack(fill="both", expand=True)
 
     def _update_time(self):
